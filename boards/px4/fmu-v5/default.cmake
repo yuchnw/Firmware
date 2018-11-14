@@ -27,6 +27,7 @@ px4_add_board(
 		#heater
 		#imu # all available imu drivers
 		imu/adis16448
+		imu/adis16497
 		imu/bmi055
 		imu/bmi160
 		imu/bma180
