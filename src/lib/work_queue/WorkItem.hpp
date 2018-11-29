@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- *   Copyright (C) 2012 PX4 Development Team. All rights reserved.
+ *   Copyright (c) 2018 PX4 Development Team. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,68 +31,55 @@
  *
  ****************************************************************************/
 
-/**
- * @file List.hpp
- *
- * A linked list.
- */
-
 #pragma once
 
-template<class T>
-class ListNode
+#include <containers/List.hpp>
+#include <containers/Queue.hpp>
+#include <lib/perf/perf_counter.h>
+#include <px4_defines.h>
+#include <drivers/drv_hrt.h>
+
+namespace px4
 {
+
+class WorkQueue; // forward declaration
+
+class WorkItem : public ListNode<WorkItem *>, public QueueNode<WorkItem *>
+{
+
 public:
 
-	void setSibling(T sibling) { _sibling = sibling; }
-	const T getSibling() const { return _sibling; }
+	WorkItem();
+	virtual ~WorkItem();
+
+	bool Init();
+
+	void ScheduleNow();
+
+	virtual void Run() = 0;
+
+	void pre_run()
+	{
+		perf_begin(_perf_cycle_time);
+		perf_count(_perf_interval);
+		perf_set_elapsed(_perf_latency, hrt_elapsed_time(&_qtime));
+	}
+
+	void post_run() { perf_end(_perf_cycle_time); }
+
+	void print_status() const;
 
 protected:
 
-	T _sibling{nullptr};
+	uint64_t	_qtime{0};       // Time work queued
 
+private:
+
+	px4::WorkQueue	*_wq{nullptr};
+
+	perf_counter_t	_perf_cycle_time;
+	perf_counter_t	_perf_interval;
+	perf_counter_t	_perf_latency;
 };
 
-template<class T>
-class List
-{
-public:
-
-	void add(T newNode)
-	{
-		newNode->setSibling(getHead());
-		_head = newNode;
-	}
-
-	bool remove(T removeNode)
-	{
-		// base case
-		if (removeNode == _head) {
-			_head = nullptr;
-			return true;
-		}
-
-		for (T node = _head; node != nullptr; node = node->getSibling()) {
-			// is sibling the node to remove?
-			if (node->getSibling() == removeNode) {
-				// replace sibling
-				if (node->getSibling() != nullptr) {
-					node->setSibling(node->getSibling()->getSibling());
-
-				} else {
-					node->setSibling(nullptr);
-				}
-
-				return true;
-			}
-		}
-
-		return false;
-	}
-
-	const T getHead() const { return _head; }
-
-protected:
-
-	T _head{nullptr};
-};
+} // namespace px4

@@ -103,6 +103,11 @@ int px4_task_delete(int pid)
 	return task_delete(pid);
 }
 
+int px4_task_kill(px4_task_t id, int sig)
+{
+	return kill(id, sig);
+}
+
 const char *px4_get_taskname(void)
 {
 #if CONFIG_TASK_NAME_SIZE > 0

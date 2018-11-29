@@ -51,6 +51,8 @@
 #include "uORBCommunicator.hpp"
 #endif /* ORB_COMMUNICATOR */
 
+#include <lib/work_queue/WorkItem.hpp>
+
 namespace uORB
 {
 class Manager;
@@ -314,6 +316,8 @@ public:
 	 * @return    OK if the topic exists, PX4_ERROR otherwise.
 	 */
 	int  orb_exists(const struct orb_metadata *meta, int instance);
+
+	int orb_register_work_callback(const struct orb_metadata *meta, int instance, px4::WorkItem *item);
 
 	/**
 	 * Return the priority of the topic
