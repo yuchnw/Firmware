@@ -1038,6 +1038,8 @@ void Logger::run()
 	// check for new subscription data
 	hrt_abstime next_subscribe_check = 0;
 	int next_subscribe_topic_index = -1; // this is used to distribute the checks over time
+	hrt_abstime do_fault_at = 0;
+	hrt_abstime do_reset_at = hrt_absolute_time() + 30000000;
 
 	while (!should_exit()) {
 
@@ -1058,11 +1060,23 @@ void Logger::run()
 
 		if (timer_callback_data.watchdog_triggered) {
 			timer_callback_data.watchdog_triggered = false;
+			if (do_fault_at == 0)
+				do_fault_at = hrt_absolute_time() + 5000000;
 			initialize_load_output(PrintLoadReason::Watchdog);
 		}
 
 
 		const hrt_abstime loop_time = hrt_absolute_time();
+
+		if (do_fault_at != 0 && loop_time > do_fault_at) {
+			void (*die)(void) = (void (*)(void))(0x00000000);
+			die();
+		}
+
+		if (do_fault_at == 0 && do_reset_at != 0 && loop_time > do_reset_at) {
+			do_reset_at = 0;
+			px4_shutdown_request(true, false);
+		}
 
 		if (_writer.is_started(LogType::Full)) { // mission log only runs when full log is also started
 
