@@ -294,7 +294,7 @@ void Simulator::handle_message(mavlink_message_t *msg, bool publish)
 
 			hrt_abstime now_us = hrt_absolute_time();
 
-#if 0
+#if 1
 			// This is just for to debug missing HIL_SENSOR messages.
 			static hrt_abstime last_time = 0;
 			hrt_abstime diff = now_us - last_time;

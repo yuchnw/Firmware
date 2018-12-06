@@ -52,9 +52,9 @@ fi
 
 # kill process names that might stil
 # be running from last time
-pkill -x gazebo || true
-pkill -x px4 || true
-pkill -x px4_$model || true
+#pkill -x gazebo || true
+#pkill -x px4 || true
+#pkill -x px4_$model || true
 
 cp "$src_path/Tools/posix_lldbinit" "$rootfs/.lldbinit"
 cp "$src_path/Tools/posix.gdbinit" "$rootfs/.gdbinit"
