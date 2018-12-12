@@ -1,6 +1,6 @@
 ############################################################################
 #
-#   Copyright (c) 2017 PX4 Development Team. All rights reserved.
+#   Copyright (c) 2016 PX4 Development Team. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -30,12 +30,19 @@
 # POSSIBILITY OF SUCH DAMAGE.
 #
 ############################################################################
-
-add_subdirectory(airspeed)
-add_subdirectory(accelerometer)
-add_subdirectory(device)
-add_subdirectory(gyroscope)
-add_subdirectory(led)
-add_subdirectory(linux_gpio)
-add_subdirectory(magnetometer)
-add_subdirectory(smbus)
+px4_add_module(
+	MODULE drivers__icm20948
+	MAIN icm20948
+	STACK_MAIN 1500
+	COMPILE_FLAGS
+	SRCS
+		icm20948.cpp
+		icm20948_i2c.cpp
+		icm20948_spi.cpp
+		main.cpp
+		accel.cpp
+		gyro.cpp
+		mag.cpp
+		mag_i2c.cpp
+	DEPENDS
+	)

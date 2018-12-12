@@ -54,12 +54,12 @@
 #include <lib/conversion/rotation.h>
 
 #include "mag.h"
-#include "mpu9250.h"
+#include "icm20948.h"
 
 
 // If interface is non-null, then it will used for interacting with the device.
 // Otherwise, it will passthrough the parent MPU9250
-MPU9250_mag::MPU9250_mag(MPU9250 *parent, device::Device *interface, const char *path) :
+MPU9250_mag::MPU9250_mag(ICM20948 *parent, device::Device *interface, const char *path) :
 	CDev("MPU9250_mag", path),
 	_interface(interface),
 	_parent(parent),

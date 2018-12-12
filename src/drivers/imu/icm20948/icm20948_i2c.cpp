@@ -37,20 +37,16 @@
  * I2C interface for MPU9250
  */
 
-/* XXX trim includes */
-
-// 	THIS NEED WORKS. I HAVE NOT YET REWRITTEN THIS --JAKE
-
+#include <px4_config.h>
 #include <drivers/device/i2c.h>
-
-//#include "mpu9250.h"
 #include <drivers/drv_accel.h>
-#include <drivers/drv_gyro.h>
+#include <drivers/drv_device.h>
 
-#include "board_config.h"
+#include "icm20948.h"
 
+#ifdef USE_I2C
 
-device::Device *MPU9250_I2C_interface(int bus, uint32_t address);
+device::Device *MPU9250_I2C_interface(int bus, uint32_t address, bool external_bus);
 
 class MPU9250_I2C : public device::I2C
 {
@@ -62,12 +58,14 @@ public:
 	int	write(unsigned address, void *data, unsigned count) override;
 
 protected:
-	int	probe() override;
+	virtual int	probe();
+
+private:
 
 };
 
 device::Device *
-MPU9250_I2C_interface(int bus, uint32_t address)
+MPU9250_I2C_interface(int bus, uint32_t address, bool external_bus)
 {
 	return new MPU9250_I2C(bus, address);
 }
@@ -75,20 +73,19 @@ MPU9250_I2C_interface(int bus, uint32_t address)
 MPU9250_I2C::MPU9250_I2C(int bus, uint32_t address) :
 	I2C("MPU9250_I2C", nullptr, bus, address, 400000)
 {
+	_device_id.devid_s.devtype = DRV_ACC_DEVTYPE_MPU9250;
 }
 
 int
 MPU9250_I2C::write(unsigned reg_speed, void *data, unsigned count)
 {
-	uint8_t cmd[2] {};
-
-	PX4_INFO("what am i doing here");
+	uint8_t cmd[MPU_MAX_WRITE_BUFFER_SIZE];
 
 	if (sizeof(cmd) < (count + 1)) {
 		return -EIO;
 	}
 
-	//cmd[0] = MPU9250_REG(reg_speed);
+	cmd[0] = MPU9250_REG(reg_speed);
 	cmd[1] = *(uint8_t *)data;
 	return transfer(&cmd[0], count + 1, nullptr, 0);
 }
@@ -102,17 +99,51 @@ MPU9250_I2C::read(unsigned reg_speed, void *data, unsigned count)
 	 * Since MPUReport has a cmd at front, we must return the data
 	 * after that. Foe anthing else we must return it
 	 */
-	// uint32_t offset = count < sizeof(MPUReport) ? 0 : offsetof(MPUReport, status);
-	// uint8_t cmd = MPU9250_REG(reg_speed);
-	// return transfer(&cmd, 1, &((uint8_t *)data)[offset], count);
-	return 0;
+	uint32_t offset = count < sizeof(MPUReport) ? 0 : offsetof(MPUReport, status);
+	uint8_t cmd = MPU9250_REG(reg_speed);
+	return transfer(&cmd, 1, &((uint8_t *)data)[offset], count);
 }
 
 int
 MPU9250_I2C::probe()
 {
 	// uint8_t whoami = 0;
-	// uint8_t expected = WHOAMI_9250;
-	//return (read(MPUREG_WHOAMI, &whoami, 1) == OK && (whoami == expected)) ? 0 : -EIO;
-	return 0;
+	// uint8_t reg_whoami = 0;
+	// uint8_t expected = 0;
+	// uint8_t register_select = REG_BANK(BANK0);  // register bank containing WHOAMI for ICM20948
+
+	// switch (_whoami) {
+	// case MPU_WHOAMI_9250:
+	// 	reg_whoami = MPUREG_WHOAMI;
+	// 	expected = MPU_WHOAMI_9250;
+	// 	break;
+
+	// case MPU_WHOAMI_6500:
+	// 	reg_whoami = MPUREG_WHOAMI;
+	// 	expected = MPU_WHOAMI_6500;
+	// 	break;
+
+	// case ICM_WHOAMI_20948:
+	// 	reg_whoami = ICMREG_20948_WHOAMI;
+	// 	expected = ICM_WHOAMI_20948;
+	// 	/*
+	// 	 * make sure register bank 0 is selected - whoami is only present on bank 0, and that is
+	// 	 * not sure e.g. if the device has rebooted without repowering the sensor
+	// 	 */
+	// 	write(ICMREG_20948_BANK_SEL, &register_select, 1);
+
+	// 	break;
+	// }
+
+	// return (read(reg_whoami, &whoami, 1) == OK && (whoami == expected)) ? 0 : -EIO;
+
+
+	// // Try the mpu9250/6500 first
+	// read(MPUREG_WHOAMI, &whoami, 1);
+	// if (whoami == MPU_WHOAMI_9250)
+
+	// this does not matter
+	return PX4_OK;
 }
+
+#endif /* USE_I2C */

@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- *   Copyright (c) 2012-2016 PX4 Development Team. All rights reserved.
+ *   Copyright (c) 2018 PX4 Development Team. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,33 +31,51 @@
  *
  ****************************************************************************/
 
-#pragma once
 
-class MPU9250;
+#include <mathlib/math/filter/LowPassFilter2p.hpp>
 
-/**
- * Helper class implementing the accel driver node.
- */
-class MPU9250_accel : public device::CDev
+#include <drivers/device/integrator.h>
+#include <drivers/drv_mag.h>
+#include <drivers/drv_hrt.h>
+#include <lib/drivers/device/Device.hpp>
+#include <lib/cdev/CDev.hpp>
+#include <lib/conversion/rotation.h>
+#include <uORB/topics/sensor_mag.h>
+#include <uORB/uORB.h>
+
+class Mag : public cdev::CDev
 {
+
 public:
-	MPU9250_accel(MPU9250 *parent, const char *path);
-	~MPU9250_accel();
+	Mag(const char *name, device::Device  *interface, uint8_t dev_type, enum Rotation rotation, float scale);
+	~Mag() override;
 
-	virtual int		ioctl(struct file *filp, int cmd, unsigned long arg);
+	int	init() override;
+	int	ioctl(cdev::file_t *filp, int cmd, unsigned long arg) override;
 
-	virtual int		init();
+	int publish(float x, float y, float z, float temperature);
 
-protected:
-	friend class MPU9250;
-
-	void			parent_poll_notify();
+	void configure_filter(float sample_freq, float cutoff_freq);
 
 private:
-	MPU9250			*_parent;
+	// Pointer to the communication interface
+	const device::Device *_interface {nullptr};
 
-	orb_advert_t		_accel_topic{nullptr};
-	int			_accel_orb_class_instance{-1};
-	int			_accel_class_instance{-1};
+	mag_calibration_s _cal{};
 
+	orb_advert_t _topic{nullptr};
+
+	device::Device::DeviceId _device_id = {};
+
+	int	_orb_class_instance{ -1};
+
+	int _class_device_instance{ -1};
+
+	enum Rotation _rotation = ROTATION_NONE;
+
+	float _scale;
+
+	math::LowPassFilter2p _filter_x{100, 20};
+	math::LowPassFilter2p _filter_y{100, 20};
+	math::LowPassFilter2p _filter_z{100, 20};
 };

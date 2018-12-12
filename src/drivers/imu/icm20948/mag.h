@@ -101,7 +101,7 @@
 
 
 
-class MPU9250;
+class ICM20948;
 
 #pragma pack(push, 1)
 struct ak8963_regs {
@@ -136,7 +136,7 @@ typedef device::Device *(*MPU9250_mag_constructor)(int, bool);
 class MPU9250_mag : public device::CDev
 {
 public:
-	MPU9250_mag(MPU9250 *parent, device::Device *interface, const char *path);
+	MPU9250_mag(ICM20948 *parent, device::Device *interface, const char *path);
 	~MPU9250_mag();
 
 	virtual int ioctl(struct file *filp, int cmd, unsigned long arg);
@@ -156,7 +156,7 @@ public:
 protected:
 	Device			*_interface;
 
-	friend class MPU9250;
+	friend class ICM20948;
 
 	/* Directly measure from the _interface if possible */
 	void measure();
@@ -170,7 +170,7 @@ protected:
 	bool is_passthrough() { return _interface == nullptr; }
 
 private:
-	MPU9250 *_parent;
+	ICM20948 *_parent;
 	orb_advert_t _mag_topic;
 	int _mag_orb_class_instance;
 	int _mag_class_instance;

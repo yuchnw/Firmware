@@ -41,60 +41,40 @@
  * @author David sidrane
  */
 
+
 #include <px4_config.h>
-#include <drivers/device/spi.h>
+#include <lib/drivers/device/spi.h>
 #include <drivers/drv_accel.h>
 #include <drivers/drv_device.h>
-
-#include "mpu9250.h"
 
 #define DIR_READ			0x80
 #define DIR_WRITE			0x00
 
-/*
- * The MPU9250 can only handle high SPI bus speeds of 20Mhz on the sensor and
- * interrupt status registers. All other registers have a maximum 1MHz
- * SPI speed
- *
- * The Actual Value will be rounded down by the spi driver.
- * for a 168Mhz CPU this will be 10.5 Mhz and for a 180 Mhz CPU
- * it will be 11.250 Mhz
- */
-#define MPU9250_LOW_SPI_BUS_SPEED	1000*1000
-#define MPU9250_HIGH_SPI_BUS_SPEED	20*1000*1000
+#define WHOAMI_ADDR			0x75
+#define WHOAMI_9250			0x71
+#define WHOAMI_6500			0x70
 
-device::Device *MPU9250_SPI_interface(int bus, uint32_t cs, bool external_bus);
+device::Device *MPU9250_SPI_interface(int bus, uint32_t cs);
 
 class MPU9250_SPI : public device::SPI
 {
 public:
 	MPU9250_SPI(int bus, uint32_t device);
-	~MPU9250_SPI() override = default;
+	~MPU9250_SPI() = default;
 
-	int	read(unsigned address, void *data, unsigned count) override;
-	int	write(unsigned address, void *data, unsigned count) override;
+	int	read(unsigned reg, void *data, unsigned count) override;
+	int	write(unsigned reg, void *data, unsigned count) override;
 
 protected:
+
 	int probe() override;
-
-private:
-
-	/* Helper to set the desired speed and isolate the register on return */
-	void set_bus_frequency(unsigned &reg_speed_reg_out);
 };
 
-device::Device *
-MPU9250_SPI_interface(int bus, uint32_t cs, bool external_bus)
+device::Device *MPU9250_SPI_interface(int bus, uint32_t cs)
 {
 	device::Device *interface = nullptr;
 
-	if (external_bus) {
-#if !(defined(PX4_SPI_BUS_EXT) && defined(PX4_SPIDEV_EXT_MPU))
-		errx(0, "External SPI not available");
-#endif
-	}
-
-	if (cs != SPIDEV_NONE(0)) {
+	if (cs != 0) {
 		interface = new MPU9250_SPI(bus, cs);
 	}
 
@@ -102,97 +82,69 @@ MPU9250_SPI_interface(int bus, uint32_t cs, bool external_bus)
 }
 
 MPU9250_SPI::MPU9250_SPI(int bus, uint32_t device) :
-	SPI("MPU9250", nullptr, bus, device, SPIDEV_MODE3, MPU9250_LOW_SPI_BUS_SPEED)
+	SPI("MPU9250", nullptr, bus, device, SPIDEV_MODE3, 20e6)
 {
 	_device_id.devid_s.devtype = DRV_ACC_DEVTYPE_MPU9250;
+	// _device_id.devid_s.bus_type = (device::Device::DeviceBusType)this->get_device_bus_type();
+	// _device_id.devid_s.bus = this->get_device_bus();
+	// _device_id.devid_s.address = this->get_device_address();
+
+	set_lockmode(LOCK_THREADS);
 }
 
-void
-MPU9250_SPI::set_bus_frequency(unsigned &reg_speed)
+int MPU9250_SPI::write(unsigned reg, void *data, unsigned count)
 {
-	/* Set the desired speed */
-	set_frequency(MPU9250_IS_HIGH_SPEED(reg_speed) ? MPU9250_HIGH_SPI_BUS_SPEED : MPU9250_LOW_SPI_BUS_SPEED);
+	uint32_t clock_speed = 1e6;
 
-	/* Isoolate the register on return */
-	reg_speed = MPU9250_REG(reg_speed);
+	set_frequency(clock_speed);
+
+	uint8_t temp = ((uint8_t *)data)[0];
+
+	((uint8_t *)data)[0] = reg | DIR_WRITE;
+	((uint8_t *)data)[1] = temp;
+
+	return transfer((uint8_t *)data, (uint8_t *)data, count);
 }
 
-int
-MPU9250_SPI::write(unsigned reg_speed, void *data, unsigned count)
+int MPU9250_SPI::read(unsigned reg, void *data, unsigned count)
 {
-	uint8_t cmd[MPU_MAX_WRITE_BUFFER_SIZE];
+	// If we are doing dma read we do this
+	uint32_t clock_speed = 20e6;
 
-	if (sizeof(cmd) < (count + 1)) {
-		return -EIO;
-	}
+	set_frequency(clock_speed);
 
-	/* Set the desired speed and isolate the register */
+	uint8_t reg_u8 = reg | DIR_READ;
 
-	set_bus_frequency(reg_speed);
+	// We will use the data buffer for both the send and recv values as NuttX DMA requires this.
+	((uint8_t *)data)[0] = reg_u8;
 
-	cmd[0] = reg_speed | DIR_WRITE;
-	cmd[1] = *(uint8_t *)data;
-
-	return transfer(&cmd[0], &cmd[0], count + 1);
-}
-
-int
-MPU9250_SPI::read(unsigned reg_speed, void *data, unsigned count)
-{
-	/* We want to avoid copying the data of MPUReport: So if the caller
-	 * supplies a buffer not MPUReport in size, it is assume to be a reg or reg 16 read
-	 * and we need to provied the buffer large enough for the callers data
-	 * and our command.
-	 */
-	uint8_t cmd[3] = {0, 0, 0};
-
-	uint8_t *pbuff  =  count < sizeof(MPUReport) ? cmd : (uint8_t *) data ;
-
-	if (count < sizeof(MPUReport))  {
-		/* add command */
-		count++;
-	}
-
-	set_bus_frequency(reg_speed);
-
-	/* Set command */
-	pbuff[0] = reg_speed | DIR_READ ;
-
-	/* Transfer the command and get the data */
-	int ret = transfer(pbuff, pbuff, count);
-
-	if (ret == OK && pbuff == &cmd[0]) {
-		/* Adjust the count back */
-		count--;
-
-		/* Return the data */
-		memcpy(data, &cmd[1], count);
-	}
+	int ret = transfer((uint8_t *)data, (uint8_t *)data, count);
 
 	return ret;
 }
 
-int
-MPU9250_SPI::probe()
+int MPU9250_SPI::probe()
 {
-	uint8_t whoami = 0;
+	uint8_t whoami[2] = {};
 
-	int ret = read(MPUREG_WHOAMI, &whoami, 1);
+	int ret = read(WHOAMI_ADDR, whoami, 2);
 
 	if (ret != OK) {
 		return -EIO;
 	}
 
-	switch (whoami) {
-	case MPU_WHOAMI_9250:
-	case MPU_WHOAMI_6500:
+	switch (whoami[1]) {
+	case WHOAMI_9250:
+
+	case WHOAMI_6500:
 		ret = 0;
 		break;
 
 	default:
-		PX4_WARN("probe failed! %u", whoami);
+		//PX4_WARN("probe failed! %d", whoami);
 		ret = -EIO;
 	}
 
 	return ret;
+	//return PX4_OK;
 }

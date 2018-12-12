@@ -68,9 +68,9 @@
 
 #include "mag.h"
 #include "gyro.h"
-#include "mpu9250.h"
+#include "icm20948.h"
 
-MPU9250_accel::MPU9250_accel(MPU9250 *parent, const char *path) :
+MPU9250_accel::MPU9250_accel(ICM20948 *parent, const char *path) :
 	CDev("MPU9250_accel", path),
 	_parent(parent)
 {

@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- *   Copyright (c) 2016 PX4 Development Team. All rights reserved.
+ *   Copyright (c) 2012-2016 PX4 Development Team. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,85 +32,82 @@
  ****************************************************************************/
 
 /**
- * @file mag_i2c.cpp
+ * @file gyro.cpp
  *
- * I2C interface for AK8963
+ * Driver for the Invensense mpu9250 connected via SPI.
+ *
+ * @author Andrew Tridgell
+ *
+ * based on the mpu6000 driver
  */
 
 #include <px4_config.h>
-#include <drivers/device/i2c.h>
+#include <lib/perf/perf_counter.h>
+#include <drivers/device/spi.h>
+#include <drivers/device/ringbuffer.h>
+#include <drivers/device/integrator.h>
 #include <drivers/drv_accel.h>
-#include <drivers/drv_device.h>
+#include <drivers/drv_gyro.h>
+#include <drivers/drv_mag.h>
+#include <lib/mathlib/math/filter/LowPassFilter2p.hpp>
+#include <lib/conversion/rotation.h>
 
-#include "mpu9250.h"
 #include "mag.h"
+#include "gyro.h"
+#include "icm20948.h"
 
-#ifdef USE_I2C
-
-device::Device *AK8963_I2C_interface(int bus, bool external_bus);
-
-class AK8963_I2C : public device::I2C
+MPU9250_gyro::MPU9250_gyro(ICM20948 *parent, const char *path) :
+	CDev("MPU9250_gyro", path),
+	_parent(parent)
 {
-public:
-	AK8963_I2C(int bus);
-	~AK8963_I2C() override = default;
-
-	int	read(unsigned address, void *data, unsigned count) override;
-	int	write(unsigned address, void *data, unsigned count) override;
-
-protected:
-	int	probe() override;
-
-};
-
-device::Device *
-AK8963_I2C_interface(int bus, bool external_bus)
-{
-	return new AK8963_I2C(bus);
 }
 
-AK8963_I2C::AK8963_I2C(int bus) :
-	I2C("AK8963_I2C", nullptr, bus, AK8963_I2C_ADDR, 400000)
+MPU9250_gyro::~MPU9250_gyro()
 {
-	_device_id.devid_s.devtype =  DRV_MAG_DEVTYPE_MPU9250;
+	if (_gyro_class_instance != -1) {
+		unregister_class_devname(GYRO_BASE_DEVICE_PATH, _gyro_class_instance);
+	}
 }
 
 int
-AK8963_I2C::write(unsigned reg_speed, void *data, unsigned count)
+MPU9250_gyro::init()
 {
-	uint8_t cmd[MPU_MAX_WRITE_BUFFER_SIZE];
+	// do base class init
+	int ret = CDev::init();
 
-	if (sizeof(cmd) < (count + 1)) {
-		return -EIO;
+	/* if probe/setup failed, bail now */
+	if (ret != OK) {
+		DEVICE_DEBUG("gyro init failed");
+		return ret;
 	}
 
-	cmd[0] = MPU9250_REG(reg_speed);
-	cmd[1] = *(uint8_t *)data;
-	return transfer(&cmd[0], count + 1, nullptr, 0);
+	_gyro_class_instance = register_class_devname(GYRO_BASE_DEVICE_PATH);
+
+	return ret;
+}
+
+void
+MPU9250_gyro::parent_poll_notify()
+{
+	poll_notify(POLLIN);
 }
 
 int
-AK8963_I2C::read(unsigned reg_speed, void *data, unsigned count)
+MPU9250_gyro::ioctl(struct file *filp, int cmd, unsigned long arg)
 {
-	uint8_t cmd = MPU9250_REG(reg_speed);
-	return transfer(&cmd, 1, (uint8_t *)data, count);
-}
+	switch (cmd) {
 
-int
-AK8963_I2C::probe()
-{
-	uint8_t whoami = 0;
-	uint8_t expected = AK8963_DEVICE_ID;
+	/* these are shared with the accel side */
+	case SENSORIOCSPOLLRATE:
+	case SENSORIOCRESET:
+		return _parent->_accel->ioctl(filp, cmd, arg);
 
-	if (PX4_OK != read(AK8963REG_WIA, &whoami, 1)) {
-		return -EIO;
+	case GYROIOCSSCALE:
+		/* copy scale in */
+		memcpy(&_parent->_gyro_scale, (struct gyro_calibration_s *) arg, sizeof(_parent->_gyro_scale));
+		return OK;
+
+	default:
+		return CDev::ioctl(filp, cmd, arg);
 	}
-
-	if (whoami != expected) {
-		return -EIO;
-	}
-
-	return OK;
 }
-
-#endif

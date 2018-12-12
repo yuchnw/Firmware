@@ -69,7 +69,7 @@
 #include <mathlib/math/filter/LowPassFilter2p.hpp>
 #include <lib/conversion/rotation.h>
 
-#include "mpu9250.h"
+#include "icm20948.h"
 
 #define MPU_DEVICE_PATH_ACCEL		"/dev/mpu9250_accel"
 #define MPU_DEVICE_PATH_GYRO		"/dev/mpu9250_gyro"
@@ -116,7 +116,7 @@
 #define MPU_DEVICE_PATH_ICM_MAG_EXT2	"/dev/mpu9250_icm_mag_ext2"
 
 /** driver 'main' command */
-extern "C" { __EXPORT int mpu9250_main(int argc, char *argv[]); }
+extern "C" { __EXPORT int icm20948_main(int argc, char *argv[]); }
 
 enum MPU9250_BUS {
 	MPU9250_BUS_ALL = 0,
@@ -130,7 +130,7 @@ enum MPU9250_BUS {
 /**
  * Local functions in support of the shell command.
  */
-namespace mpu9250
+namespace icm20948
 {
 
 /*
@@ -146,7 +146,7 @@ struct mpu9250_bus_option {
 	bool magpassthrough;
 	uint8_t busnum;
 	uint32_t address;
-	MPU9250	*dev;
+	ICM20948	*dev;
 } bus_options[] = {
 #if defined (USE_I2C)
 #  if defined(PX4_I2C_BUS_ONBOARD) && defined(PX4_I2C_OBDEV_MPU9250)
@@ -168,16 +168,16 @@ struct mpu9250_bus_option {
 #  endif
 #endif
 #ifdef PX4_SPIDEV_MPU
-	{ MPU9250_BUS_SPI_INTERNAL, MPU_DEVICE_PATH_ACCEL, MPU_DEVICE_PATH_GYRO, MPU_DEVICE_PATH_MAG, &MPU9250_SPI_interface, true, PX4_SPI_BUS_SENSORS, PX4_SPIDEV_MPU, NULL },
-	{ MPU9250_BUS_SPI_INTERNAL, MPU_DEVICE_PATH_MPU6500_ACCEL, MPU_DEVICE_PATH_MPU6500_GYRO, MPU_DEVICE_PATH_MPU6500_MAG, &MPU9250_SPI_interface, true, PX4_SPI_BUS_SENSORS, PX4_SPIDEV_MPU, NULL },
+	{ MPU9250_BUS_SPI_INTERNAL, MPU_DEVICE_PATH_ACCEL, MPU_DEVICE_PATH_GYRO, MPU_DEVICE_PATH_MAG, &ICM20948_SPI_interface, true, PX4_SPI_BUS_SENSORS, PX4_SPIDEV_MPU, NULL },
+	{ MPU9250_BUS_SPI_INTERNAL, MPU_DEVICE_PATH_MPU6500_ACCEL, MPU_DEVICE_PATH_MPU6500_GYRO, MPU_DEVICE_PATH_MPU6500_MAG, &ICM20948_SPI_interface, true, PX4_SPI_BUS_SENSORS, PX4_SPIDEV_MPU, NULL },
 #endif
 #ifdef PX4_SPIDEV_MPU2
-	{ MPU9250_BUS_SPI_INTERNAL2, MPU_DEVICE_PATH_ACCEL_1, MPU_DEVICE_PATH_GYRO_1, MPU_DEVICE_PATH_MAG_1, &MPU9250_SPI_interface, true, PX4_SPI_BUS_SENSORS, PX4_SPIDEV_MPU2, NULL },
-	{ MPU9250_BUS_SPI_INTERNAL2, MPU_DEVICE_PATH_MPU6500_ACCEL_1, MPU_DEVICE_PATH_MPU6500_GYRO_1, MPU_DEVICE_PATH_MPU6500_MAG_1, &MPU9250_SPI_interface, true, PX4_SPI_BUS_SENSORS, PX4_SPIDEV_MPU2, NULL },
+	{ MPU9250_BUS_SPI_INTERNAL2, MPU_DEVICE_PATH_ACCEL_1, MPU_DEVICE_PATH_GYRO_1, MPU_DEVICE_PATH_MAG_1, &ICM20948_SPI_interface, true, PX4_SPI_BUS_SENSORS, PX4_SPIDEV_MPU2, NULL },
+	{ MPU9250_BUS_SPI_INTERNAL2, MPU_DEVICE_PATH_MPU6500_ACCEL_1, MPU_DEVICE_PATH_MPU6500_GYRO_1, MPU_DEVICE_PATH_MPU6500_MAG_1, &ICM20948_SPI_interface, true, PX4_SPI_BUS_SENSORS, PX4_SPIDEV_MPU2, NULL },
 #endif
 #if defined(PX4_SPI_BUS_EXT) && defined(PX4_SPIDEV_EXT_MPU)
-	{ MPU9250_BUS_SPI_EXTERNAL, MPU_DEVICE_PATH_ACCEL_EXT, MPU_DEVICE_PATH_GYRO_EXT, MPU_DEVICE_PATH_MAG_EXT, &MPU9250_SPI_interface, true, PX4_SPI_BUS_EXT, PX4_SPIDEV_EXT_MPU, NULL },
-	{ MPU9250_BUS_SPI_EXTERNAL, MPU_DEVICE_PATH_MPU6500_ACCEL_EXT, MPU_DEVICE_PATH_MPU6500_GYRO_EXT, MPU_DEVICE_PATH_MPU6500_MAG_EXT, &MPU9250_SPI_interface, true, PX4_SPI_BUS_EXT, PX4_SPIDEV_EXT_MPU, NULL },
+	{ MPU9250_BUS_SPI_EXTERNAL, MPU_DEVICE_PATH_ACCEL_EXT, MPU_DEVICE_PATH_GYRO_EXT, MPU_DEVICE_PATH_MAG_EXT, &ICM20948_SPI_interface, true, PX4_SPI_BUS_EXT, PX4_SPIDEV_EXT_MPU, NULL },
+	{ MPU9250_BUS_SPI_EXTERNAL, MPU_DEVICE_PATH_MPU6500_ACCEL_EXT, MPU_DEVICE_PATH_MPU6500_GYRO_EXT, MPU_DEVICE_PATH_MPU6500_MAG_EXT, &ICM20948_SPI_interface, true, PX4_SPI_BUS_EXT, PX4_SPIDEV_EXT_MPU, NULL },
 #endif
 };
 
@@ -247,8 +247,8 @@ start_bus(struct mpu9250_bus_option &bus, enum Rotation rotation, bool external,
 
 #endif
 
-	bus.dev = new MPU9250(interface, mag_interface, bus.accelpath, bus.gyropath, bus.magpath, rotation,
-			      magnetometer_only);
+	bus.dev = new ICM20948(interface, mag_interface, bus.accelpath, bus.gyropath, bus.magpath, rotation,
+			       magnetometer_only);
 
 	if (bus.dev == nullptr) {
 		delete interface;
@@ -406,7 +406,7 @@ usage()
 } // namespace
 
 int
-mpu9250_main(int argc, char *argv[])
+icm20948_main(int argc, char *argv[])
 {
 	int myoptind = 1;
 	int ch;
@@ -447,13 +447,13 @@ mpu9250_main(int argc, char *argv[])
 			break;
 
 		default:
-			mpu9250::usage();
+			icm20948::usage();
 			return 0;
 		}
 	}
 
 	if (myoptind >= argc) {
-		mpu9250::usage();
+		icm20948::usage();
 		return -1;
 	}
 
@@ -464,27 +464,27 @@ mpu9250_main(int argc, char *argv[])
 	 * Start/load the driver.
 	 */
 	if (!strcmp(verb, "start")) {
-		mpu9250::start(busid, rotation, external, magnetometer_only);
+		icm20948::start(busid, rotation, external, magnetometer_only);
 	}
 
 	if (!strcmp(verb, "stop")) {
-		mpu9250::stop(busid);
+		icm20948::stop(busid);
 	}
 
 	/*
 	 * Reset the driver.
 	 */
 	if (!strcmp(verb, "reset")) {
-		mpu9250::reset(busid);
+		icm20948::reset(busid);
 	}
 
 	/*
 	 * Print driver information.
 	 */
 	if (!strcmp(verb, "info")) {
-		mpu9250::info(busid);
+		icm20948::info(busid);
 	}
 
-	mpu9250::usage();
+	icm20948::usage();
 	return 0;
 }
