@@ -1,10 +1,10 @@
 #!nsh
 #
-# AUAV/mRO x21 specific board init
+# PX4 FMUv2 specific board init
 #
 #------------------------------------------------------------------------------
 #
-# UART mapping on x21:
+# UART mapping on FMUv2:
 #
 # UART1         /dev/ttyS0      IO debug
 # USART2        /dev/ttyS1      TELEM1 (flow control)
@@ -16,26 +16,20 @@
 #------------------------------------------------------------------------------
 #
 
-
-if [ $AUTOCNF = yes ]
+#
+# Bootloader upgrade
+#
+set BL_FILE /etc/extras/px4fmuv3_bl.bin
+if [ -f $BL_FILE ]
 then
-
-
+	if param compare SYS_BL_UPDATE 1
+	then
+		param set SYS_BL_UPDATE 0
+		param save
+		echo "BL update..." >> $LOG_FILE
+		bl_update $BL_FILE
+		echo "BL update done" >> $LOG_FILE
+		reboot
+	fi
 fi
-
-
-# External I2C bus
-hmc5883 -C -T -X start
-lis3mdl -X start
-ist8310 -C start
-
-# Internal SPI bus ICM-20608-G is rotated 90 deg yaw
-mpu6000 -R 2 -T 20608 start
-
-# Internal SPI bus ICM-20602-G is rotated 90 deg yaw
-mpu6000 -R 2 -T 20602 start
-
-# Internal SPI bus mpu9250 is rotated 90 deg yaw
-mpu9250 -R 2 start
-
-px4flow start &
+unset BL_FILE

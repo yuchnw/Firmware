@@ -1,0 +1,24 @@
+#!nsh
+#
+# PX4 FMUv2 specific board init
+#
+#------------------------------------------------------------------------------
+#
+# UART mapping on NXP FMUK66-v3:
+#
+# LPUART0		/dev/ttyS0		P16 CONSOLE
+# UART0			/dev/ttyS1		P7  IR
+# UART1			/dev/ttyS2		P14-3, P15-2 RC input
+# UART2			/dev/ttyS3		P3 GPS
+# UART4			/dev/ttyS3		P10 TELEM1 (flow control)
+#
+#------------------------------------------------------------------------------
+#
+
+
+if [ $AUTOCNF = yes ]
+then
+	param set SYS_FMU_TASK 1
+fi
+
+set MIXER_AUX none

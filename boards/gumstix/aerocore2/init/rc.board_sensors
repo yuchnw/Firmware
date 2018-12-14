@@ -1,0 +1,9 @@
+#!nsh
+#
+# Gumstix Aerocore2 specific board init
+#
+#------------------------------------------------------------------------------
+#
+
+l3gd20 -R 12 start
+lsm303d start

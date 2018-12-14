@@ -1,0 +1,27 @@
+#!nsh
+#
+# Airmind Mindpx-v2 specific board init
+#
+#------------------------------------------------------------------------------
+#
+# UART mapping:
+#
+# UART1         /dev/ttyS0      wifi
+# USART2        /dev/ttyS1      TELEM1 (flow control)
+# USART3        /dev/ttyS2      TELEM2 (flow control)
+# UART4
+# UART7                         CONSOLE
+# UART8         /dev/ttyS6      SERIAL4/TELEM4
+#
+#------------------------------------------------------------------------------
+#
+
+if [ $AUTOCNF = yes ]
+then
+	# Disable safety switch by default
+	param set CBRK_IO_SAFETY 22027
+
+	param set SYS_FMU_TASK 1
+fi
+
+set MIXER_AUX none

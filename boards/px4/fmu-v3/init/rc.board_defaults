@@ -1,0 +1,22 @@
+#!nsh
+#
+# PX4 FMUv3 specific board init
+#
+#------------------------------------------------------------------------------
+#
+# UART mapping on FMUv2:
+#
+# UART1         /dev/ttyS0      IO debug
+# USART2        /dev/ttyS1      TELEM1 (flow control)
+# USART3        /dev/ttyS2      TELEM2 (flow control)
+# UART4
+# UART7                         CONSOLE
+# UART8         /dev/ttyS6      SERIAL4/TELEM4
+#
+#------------------------------------------------------------------------------
+#
+
+if [ $AUTOCNF = yes ]
+then
+
+fi

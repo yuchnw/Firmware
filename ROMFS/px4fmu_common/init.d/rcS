@@ -21,17 +21,19 @@ set +e
 # it wastes flash
 #
 set AUX_MODE pwm
-set BOARD_RC /etc/init.d/rc.board
+set BOARD_RC_DEFAULTS /etc/init.d/rc.board_defaults
+set BOARD_RC_EXTRAS /etc/init.d/rc.board_extras
+set BOARD_RC_SENSORS /etc/init.d/rc.board_sensors
 set DATAMAN_OPT ""
 set FAILSAFE none
 set FAILSAFE_AUX none
 set FCONFIG /fs/microsd/etc/config.txt
 set FEXTRAS /fs/microsd/etc/extras.txt
-set FRC /fs/microsd/etc/rc.txt
 set FMU_ARGS ""
 set FMU_MODE pwm
-set IOFW "/etc/extras/px4_io-v2_default.bin"
+set FRC /fs/microsd/etc/rc.txt
 set IO_PRESENT no
+set IOFW "/etc/extras/px4_io-v2_default.bin"
 set LOG_FILE /fs/microsd/bootlog.txt
 set LOGGER_ARGS ""
 set LOGGER_BUF  14
@@ -139,22 +141,6 @@ if [ -f $FRC ]
 then
 	sh $FRC
 else
-	#
-	# Waypoint storage.
-	# REBOOTWORK this needs to start in parallel.
-	#
-	# TODO: fix board override $DATAMAN_OPT
-	dataman start $DATAMAN_OPT
-
-	#
-	# Start the socket communication send_event handler.
-	#
-	send_event start
-
-	#
-	# Start the resource load monitor.
-	#
-	load_mon start
 
 	#
 	# Set the parameter file if mtd starts successfully.
@@ -174,60 +160,60 @@ else
 	fi
 
 	#
-	# Start system state indicator.
+	# run boards rc.board_defaults if available
 	#
-	if ! rgbled start
+	if [ -f $BOARD_RC_DEFAULTS ]
 	then
-		if blinkm start
-		then
-			blinkm systemstate
-		fi
+		echo "Board defaults: ${BOARD_RC_DEFAULTS}"
+		sh $BOARD_RC_DEFAULTS
 	fi
-
-	rgbled_ncp5623c start
-	
-	#
-	# FMUv5 may have both PWM I2C RGB LED support.
-	#
-	rgbled_pwm start
 
 	#
 	# Set AUTOCNF flag to use it in AUTOSTART scripts.
 	#
 	if param compare SYS_AUTOCONFIG 1
 	then
-		# Wipe out params except RC*, flight modes and total flight time.
+		# Wipe out params except RC*, flight modes, total flight time, accel cal, gyro cal
 		param reset_nostart RC* COM_FLTMODE* LND_FLIGHT_T_* TC_* CAL_ACC* CAL_GYRO*
 		set AUTOCNF yes
 	else
 		set AUTOCNF no
+	fi
+
+	#
+	# Waypoint storage.
+	# REBOOTWORK this needs to start in parallel.
+	#
+	dataman start $DATAMAN_OPT
+
+	#
+	# Start the socket communication send_event handler.
+	#
+	send_event start
+
+	#
+	# Start the resource load monitor.
+	#
+	load_mon start
+
+	#
+	# Start system state indicator.
+	#
+	if ! rgbled start
+	then
+
+		rgbled_ncp5623c start
 
 		#
-		# Release 1.4.0 transitional support: set to old default if unconfigured,
-		# this preserves the previous behaviour.
+		# FMUv5 may have both PWM I2C RGB LED support.
 		#
-		if param compare BAT_N_CELLS 0
+		rgbled_pwm start
+
+		if blinkm start
 		then
-			param set BAT_N_CELLS 3
+			blinkm systemstate
 		fi
 	fi
-
-	###############################################################################
-	#               Begin setup for board specific configurations.                #
-	###############################################################################
-
-	#
-	# run boards rc.board if available
-	#
-	if [ -f $BOARD_RC ]
-	then
-		echo "Board init: ${BOARD_RC}"
-		sh $BOARD_RC
-	fi
-
-	###############################################################################
-	#                 End Setup for board specific configurations.                #
-	###############################################################################
 
 	if param compare SYS_FMU_TASK 1
 	then
@@ -341,9 +327,19 @@ else
 		set OUTPUT_MODE hil
 		sensors start -h
 		commander start --hil
+
 		# disable GPS
 		param set GPS_1_CONFIG 0
+
 	else
+
+		# run boards rc.board_sensors if available
+		if [ -f $BOARD_RC_SENSORS ]
+		then
+			echo "Board sensors: ${BOARD_RC_SENSORS}"
+			sh $BOARD_RC_SENSORS
+		fi
+
 		sh /etc/init.d/rc.sensors
 		commander start
 	fi
@@ -374,6 +370,7 @@ else
 		camera_feedback start
 	fi
 
+
 	#
 	# Check if UAVCAN is enabled, default to it for ESCs.
 	#
@@ -398,16 +395,19 @@ else
 		fi
 	fi
 
+
 	#
 	# Start mavlink streams that are not configurable (e.g. on USB).
 	#
 	sh /etc/init.d/rc.mavlink
+
 
 	#
 	# Start UART/Serial device drivers.
 	# Note: rc.serial is auto-generated from Tools/serial/generate_config.py
 	#
 	sh /etc/init.d/rc.serial
+
 
 	#
 	# Configure vehicle type specific parameters.
@@ -421,6 +421,7 @@ else
 	#
 	navigator start
 
+
 	#
 	# Start the standalone wind estimator.
 	#
@@ -429,15 +430,12 @@ else
 		wind_estimator start
 	fi
 
+
 	#
 	# Start a thermal calibration if required.
 	#
 	sh /etc/init.d/rc.thermal_cal
 
-	#
-	# Start the logger.
-	#
-	sh /etc/init.d/rc.logging
 
 	#
 	# Start vmount to control mounts such as gimbals, disabled by default.
@@ -447,14 +445,31 @@ else
 		vmount start
 	fi
 
+
 	#
-	# Start any custom addons.
+	# run boards rc.board_extras if available
+	#
+	if [ -f $BOARD_RC_EXTRAS ]
+	then
+		echo "Board extras: ${BOARD_RC_EXTRAS}"
+		sh $BOARD_RC_EXTRAS
+	fi
+
+
+	#
+	# Start any custom addons from the sdcard.
 	#
 	if [ -f $FEXTRAS ]
 	then
 		echo "Addons script: ${FEXTRAS}"
 		sh $FEXTRAS
 	fi
+
+	#
+	# Start the logger.
+	#
+	sh /etc/init.d/rc.logging
+
 #
 # End of autostart.
 #
@@ -463,17 +478,21 @@ fi
 #
 # Unset all script parameters to free RAM.
 #
+unset AUTOCNF
 unset AUX_MODE
+unset BOARD_RC_DEFAULTS
+unset BOARD_RC_EXTRAS
+unset BOARD_RC_SENSORS
 unset DATAMAN_OPT
 unset FAILSAFE
 unset FAILSAFE_AUX
 unset FCONFIG
 unset FEXTRAS
-unset FRC
 unset FMU_ARGS
 unset FMU_MODE
-unset IOFW
+unset FRC
 unset IO_PRESENT
+unset IOFW
 unset LOG_FILE
 unset LOGGER_ARGS
 unset LOGGER_BUF
@@ -490,16 +509,14 @@ unset PWM_AUX_MAX
 unset PWM_AUX_MIN
 unset PWM_AUX_OUT
 unset PWM_AUX_RATE
-unset PWM_OUT
-unset PWM_RATE
 unset PWM_DISARMED
 unset PWM_MAX
 unset PWM_MIN
+unset PWM_OUT
+unset PWM_RATE
 unset SDCARD_MIXERS_PATH
 unset USE_IO
 unset VEHICLE_TYPE
-unset BOARD_RC
-unset AUTOCNF
 
 #
 # Boot is complete, inform MAVLink app(s) that the system is now fully up and running.

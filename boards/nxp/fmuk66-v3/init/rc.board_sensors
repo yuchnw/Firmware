@@ -15,14 +15,6 @@
 #------------------------------------------------------------------------------
 #
 
-
-if [ $AUTOCNF = yes ]
-then
-	param set SYS_FMU_TASK 1
-fi
-
-set MIXER_AUX none
-
 # External I2C bus
 hmc5883 -C -X start
 
