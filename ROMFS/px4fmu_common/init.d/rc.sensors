@@ -257,6 +257,9 @@ fi
 
 if ver hwcmp PX4FMU_V4
 then
+	# Optical flow
+	pmw3901 start
+
 	# External I2C bus
 	hmc5883 -C -T -X start
 	lis3mdl -X start
