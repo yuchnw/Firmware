@@ -2,6 +2,7 @@
 
 #include <px4_config.h>
 #include <cfloat>
+#include <cmath>
 
 typedef union {
 	float f;

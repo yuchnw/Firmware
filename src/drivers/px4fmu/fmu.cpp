@@ -37,7 +37,8 @@
  * Driver/configurator for the PX4 FMU
  */
 
-#include <cfloat>
+#include <float.h>
+#include <math.h>
 
 #include <board_config.h>
 #include <drivers/device/device.h>
