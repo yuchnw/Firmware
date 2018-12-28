@@ -41,6 +41,7 @@
 #define DIR_WRITE				0x80
 
 //  ADIS16497 registers
+
 static constexpr uint8_t SYS_E_FLAG = 0x08; // Output, system error flags
 static constexpr uint8_t DIAG_STS   = 0x0A; // Output, self test error flags
 
@@ -65,12 +66,21 @@ static constexpr uint8_t TIME_STAMP = 0x28; // Output, time stamp
 static constexpr uint8_t CRC_LWR    = 0x2A; // Output, CRC-32 (32 bits), lower word
 static constexpr uint8_t CRC_UPR    = 0x2C; // Output, CRC-32, upper word
 
-static constexpr uint8_t BURST_CMD  = 0x7C; // Burst-read command
+static constexpr uint8_t PAGE_ID  = 0x0; // Control, page ID selector
+
+static constexpr uint8_t BURST_CMD  = 0x7C; // Cntrol, Burst-read command
+
+static constexpr uint8_t FNCTIO_CTRL  = 0x06; // Cntrol, function
+
+static constexpr uint8_t NULL_CNFG  = 0x0E; // Cntrol, bias est
 
 static constexpr uint8_t GLOB_CMD   = 0x02; // Control, global commands
 
 static constexpr uint8_t DEC_RATE   = 0x0C; // Control, output sample rate decimation
-static constexpr uint8_t RANG_MDL   = 0x12; // Measurement range (model-specific) Identifier
+static constexpr uint8_t RANG_MDL   = 0x12; // Measurement range (model-specific) Identifier TODO use this
+
+static constexpr uint8_t FILTR_BNK_0   = 0x16;
+static constexpr uint8_t FILTR_BNK_1   = 0x18;
 
 static constexpr uint8_t PROD_ID    = 0x7E;
 
@@ -81,7 +91,7 @@ static constexpr int T_STALL = 2;
 using namespace time_literals;
 
 ADIS16497::ADIS16497(int bus, const char *path_accel, const char *path_gyro, uint32_t device, enum Rotation rotation) :
-	SPI("ADIS16497", path_accel, bus, device, SPIDEV_MODE3, 15000000),
+	SPI("ADIS16497", path_accel, bus, device, SPIDEV_MODE3, 5000000),
 	_gyro(new ADIS16497_gyro(this, path_gyro)),
 	_sample_perf(perf_alloc(PC_ELAPSED, "ADIS16497_read")),
 	_sample_interval_perf(perf_alloc(PC_INTERVAL, "ADIS16497_read_int")),
@@ -226,67 +236,117 @@ int ADIS16497::reset()
 		// reset (global command bit 7)
 		uint8_t value[2] = {};
 		value[0] = (1 << 7);
+		write_reg16(PAGE_ID, 0x03);
 		write_reg16(GLOB_CMD, (uint16_t)value[0]);
+
+		// Reset Recovery Time
+		up_mdelay(210);
+
 	}
 #endif /* GPIO_SPI1_RESET_ADIS16497 */
 
-	// Reset Recovery Time
-	up_mdelay(210);
+	// Functional IO control
+	static constexpr uint16_t FNCTIO_CTRL_DEFAULT = 0x000D;
 
-	// {
-	// 	// Factory Calibration Restore (global command bit 1)
-	// 	uint8_t value[2] = {};
-	// 	value[0] = (1 << 1);
-	// 	write_reg16(GLOB_CMD, (uint16_t)value[0]);
-	// 	up_mdelay(142); // Factory Calibration Restore Time
-	// }
+	write_reg16(PAGE_ID, 0x03);
+ 	write_reg16(FNCTIO_CTRL, FNCTIO_CTRL_DEFAULT);
+ 		
+ 	up_udelay(340);
 
-	// {
-	// 	static constexpr uint16_t MSC_CTRL_DEFAULT = 0x00C1;
+ 	const uint16_t fnctio_ctrl = read_reg16(FNCTIO_CTRL);
 
-	// 	// Verify default MSC_CTRL setting
-	// 	const uint16_t msc_ctrl = read_reg16(MSC_CTRL);
+ 	if (fnctio_ctrl != FNCTIO_CTRL_DEFAULT) {
+ 		PX4_ERR("Invalid setup, FNCTIO_CTRL=%#X", fnctio_ctrl);
+ 		return PX4_ERROR;
+ 	}
 
-	// 	up_udelay(100);
+ 	// Continious bias estimation
+ 	static constexpr uint16_t NULL_CNFG_SETUP = 0x0000; // Disable continious bias estimation
+	
+	write_reg16(PAGE_ID, 0x03);
+	write_reg16(NULL_CNFG, NULL_CNFG_SETUP);
 
-	// 	if (msc_ctrl != MSC_CTRL_DEFAULT) {
-	// 		PX4_ERR("invalid setup, MSC_CTRL=%#X", msc_ctrl);
-	// 		return PX4_ERROR;
-	// 	}
-	// }
+	up_udelay(71);
 
-	// {
-	// 	// Bartlett Window FIR Filter
-	// 	static constexpr uint16_t FILT_CTRL_SETUP = 0x0000; // (disabled: 0x0000, 2 taps: 0x0001, 16 taps: 0x0004)
+ 	const uint16_t null_cnfg = read_reg16(NULL_CNFG);
+ 	
+ 	if (null_cnfg != NULL_CNFG_SETUP) {
+ 		PX4_ERR("Invalid setup,NULL_CNFG=%#X", null_cnfg);
+ 		return PX4_ERROR;
+ 	}
 
-	// 	write_reg16(FILT_CTRL, FILT_CTRL_SETUP);
+	// Bartlett Window FIR Filter
+	static constexpr uint16_t FILTR_BNK_0_SETUP = 0x0000; // (disabled: 0x0000)
+	static constexpr uint16_t FILTR_BNK_1_SETUP = 0x0000; // (disabled: 0x0000)
 
-	// 	up_udelay(100);
+	write_reg16(PAGE_ID, 0x03);
+ 	write_reg16(FILTR_BNK_0, FILTR_BNK_0_SETUP);
+ 	write_reg16(FILTR_BNK_1, FILTR_BNK_1_SETUP);
 
-	// 	const uint16_t filt_ctrl = read_reg16(FILT_CTRL);
+ 	up_udelay(65);
 
-	// 	if (filt_ctrl != FILT_CTRL_SETUP) {
-	// 		PX4_ERR("invalid setup, FILT_CTRL=%#X", filt_ctrl);
-	// 		return PX4_ERROR;
-	// 	}
-	// }
+ 	const uint16_t filtr_bnk_0 = read_reg16(FILTR_BNK_0);
 
-	// {
-	// 	// Decimation Filter
-	// 	//  set for 1000 samples per second
-	// 	static constexpr uint16_t DEC_RATE_SETUP = 0x0001;
+	if (filtr_bnk_0 != FILTR_BNK_0_SETUP) {
+		PX4_ERR("Invalid setup, FILTR_BNK_0=%#X", filtr_bnk_0);
+		return PX4_ERROR;
+	}
 
-	// 	write_reg16(DEC_RATE, DEC_RATE_SETUP);
+ 	const uint16_t filtr_bnk_1 = read_reg16(FILTR_BNK_1);
 
-	// 	up_udelay(100);
+	if (filtr_bnk_1 != FILTR_BNK_1_SETUP) {
+		PX4_ERR("Invalid setup, FILTR_BNK_1=%#X", filtr_bnk_1);
+		return PX4_ERROR;
+	}
 
-	// 	const uint16_t dec_rate = read_reg16(DEC_RATE);
+	// Decimation Filter
+	static constexpr uint16_t DEC_RATE_SETUP = 0x0003; //  4250/4 = 1062 samples per second
+	
+	write_reg16(PAGE_ID, 0x03);
+	write_reg16(DEC_RATE, DEC_RATE_SETUP);
 
-	// 	if (dec_rate != DEC_RATE_SETUP) {
-	// 		PX4_ERR("invalid setup, DEC_RATE=%#X", dec_rate);
-	// 		return PX4_ERROR;
-	// 	}
-	// }
+	up_udelay(340);
+
+ 	const uint16_t dec_rate = read_reg16(DEC_RATE);
+ 	
+ 	if (dec_rate != DEC_RATE_SETUP) {
+ 		PX4_ERR("Invalid setup, DEC_RATE=%#X", dec_rate);
+ 		return PX4_ERROR;
+ 	}
+
+ 	// TODO : CONFIG registers and all others
+
+/*
+	write_reg16(PAGE_ID, 0x03);
+ 	uint16_t filtr_cfg = read_reg16(FILTR_BNK_0);
+ 	PX4_INFO("filter 0: %#X", filtr_cfg);
+ 	filtr_cfg = read_reg16(FILTR_BNK_1);
+ 	PX4_INFO("filter 1: %#X", filtr_cfg);
+ 	
+ 	sensor_scale = read_reg16(0x06);
+ 	PX4_INFO("gyro Y scale: %#X", sensor_scale);
+ 	sensor_scale = read_reg16(0x08);
+ 	PX4_INFO("gyro Z scale: %#X", sensor_scale);
+ 	sensor_scale = read_reg16(0x1E);
+ 	PX4_INFO("accel X scale: %#X", sensor_scale);
+ 	sensor_scale = read_reg16(0x22);
+ 	PX4_INFO("accel Y scale: %#X", sensor_scale);
+ 	sensor_scale = read_reg16(0x26);
+ 	PX4_INFO("accel Z scale: %#X", sensor_scale);
+
+ 	// null_cfg registers
+	write_reg16(PAGE_ID, 0x03);
+
+ 	uint16_t null_cfg = read_reg16(0x0E);
+ 	PX4_INFO("null_cfg: %#X", null_cfg);
+
+ 	uint8_t value[2] = {};
+	value[0] = (1 << 3);
+	write_reg16(PAGE_ID, 0x03);
+	write_reg16(GLOB_CMD, (uint16_t)value[0]);
+
+	// save Recovery Time
+	up_mdelay(1125);*/
 
 	return OK;
 }
@@ -303,10 +363,10 @@ ADIS16497::probe()
 			continue;
 		}
 
+		write_reg16(PAGE_ID, 0x00);
 		_product = read_reg16(PROD_ID);
 
 		if (_product == PROD_ID_ADIS16497) {
-			DEVICE_DEBUG("PRODUCT: %#X", _product);
 
 			if (self_test_sensor()) {
 				return PX4_OK;
@@ -331,14 +391,25 @@ ADIS16497::self_test_sensor()
 	// self test (global command bit 1)
 	uint8_t value[2] = {};
 	value[0] = (1 << 1);
+	write_reg16(PAGE_ID, 0x03);
 	write_reg16(GLOB_CMD, (uint16_t)value[0]);
-	up_mdelay(14); // Self Test Time
+	up_mdelay(20); // Self Test Time
 
-	// read DIAG_STAT to check result
+	// read DIAG_STS to check result
+	write_reg16(PAGE_ID, 0x0);
 	uint16_t sys_e_flag = read_reg16(SYS_E_FLAG);
 
 	if (sys_e_flag != 0) {
 		PX4_ERR("SYS_E_FLAG: %#X", sys_e_flag);
+
+		// Read DIAG_STS to check self-test results
+		write_reg16(PAGE_ID, 0x0);
+		uint16_t diag_sts_flag = read_reg16(DIAG_STS);
+
+		if (diag_sts_flag != 0) {
+			PX4_ERR("DIAG_STS: %#X", diag_sts_flag);
+		}
+
 		return false;
 	}
 
@@ -475,7 +546,7 @@ ADIS16497::measure()
 	perf_count(_sample_interval_perf);
 
 	// Fetch the full set of measurements from the ADIS16497 in one pass (burst read).
-	ADISReport adis_report;
+	ADISReport adis_report {};
 	adis_report.cmd = ((BURST_CMD | DIR_READ) << 8) & 0xff00;
 
 	// ADIS16497 burst report should be 320 bits
@@ -483,35 +554,32 @@ ADIS16497::measure()
 
 	const hrt_abstime t = hrt_absolute_time();
 
+	write_reg16(PAGE_ID, 0x0);
 	if (OK != transferhword((uint16_t *)&adis_report, ((uint16_t *)&adis_report), sizeof(adis_report) / sizeof(uint16_t))) {
 		perf_count(_bad_transfers);
 		perf_end(_sample_perf);
 		return -EIO;
 	}
 
-	/*
-	// Calculate checksum and compare
-	uint16_t *checksum_helper = (uint16_t *)&adis_report.SYS_E_FLAG;
-
-	uint32_t checksum = 0;
-
-	for (int i = 0; i < 15; i++) {
-		checksum += checksum_helper[i];
+	if (adis_report.BURST_ID != 0xA5A5) {
+		PX4_ERR("BURST_ID: %#X", adis_report.BURST_ID);
 	}
 
-	uint32_t checksum_msg = (uint32_t)adis_report.CRC_UPR << 16 | adis_report.CRC_LWR;
+	// Check all Status/Error Flag Indicators (SYS_E_FLAG)
+	if (adis_report.SYS_E_FLAG != 0) {
+		PX4_ERR("SYS_E_FLAG: %#X", adis_report.SYS_E_FLAG);
 
-	if (checksum_msg != checksum) {
-		DEVICE_DEBUG("adis_report.checksum: %#X vs calculated: %#X", checksum_msg, checksum);
 		perf_count(_bad_transfers);
 		perf_end(_sample_perf);
 		return -EIO;
 	}
-	*/
 
-	// Check all Status/Error Flag Indicators (SYS_E_FLAG)
-	if (adis_report.SYS_E_FLAG != 0) {
-		DEVICE_DEBUG("SYS_E_FLAG: %#X", adis_report.SYS_E_FLAG);
+	uint32_t checksum_msg = uint32_t(adis_report.CRC_UPR) << 16 | adis_report.CRC_LWR;
+
+	uint32_t checksum_calc = get_imu_crc32((uint16_t *)&adis_report.SYS_E_FLAG, 15);
+
+	if (checksum_msg != checksum_calc) {
+		PX4_ERR("CHECKSUM: %#X vs calculated: %#X", checksum_msg, checksum_calc);
 		perf_count(_bad_transfers);
 		perf_end(_sample_perf);
 		return -EIO;
@@ -527,9 +595,9 @@ ADIS16497::measure()
 void
 ADIS16497::publish_accel(const hrt_abstime &t, const ADISReport &report)
 {
-	float xraw_f = report.accel_x * _accel_range_scale;
-	float yraw_f = report.accel_y * _accel_range_scale;
-	float zraw_f = report.accel_z * _accel_range_scale;
+	float xraw_f = (int32_t(report.X_ACCEL_OUT) << 16 | report.X_ACCEL_LOW) / 65536.0f * _accel_range_scale;
+	float yraw_f = (int32_t(report.Y_ACCEL_OUT) << 16 | report.Y_ACCEL_LOW) / 65536.0f * _accel_range_scale;
+	float zraw_f = (int32_t(report.Z_ACCEL_OUT) << 16 | report.Z_ACCEL_LOW) / 65536.0f * _accel_range_scale;
 
 	// apply user specified rotation
 	rotate_3f(_rotation, xraw_f, yraw_f, zraw_f);
@@ -552,9 +620,9 @@ ADIS16497::publish_accel(const hrt_abstime &t, const ADISReport &report)
 		arb.error_count = perf_event_count(_bad_transfers);
 
 		// raw sensor readings
-		arb.x_raw = report.accel_x;
-		arb.y_raw = report.accel_y;
-		arb.z_raw = report.accel_z;
+		arb.x_raw = report.X_ACCEL_OUT;
+		arb.y_raw = report.Y_ACCEL_OUT;
+		arb.z_raw = report.Z_ACCEL_OUT;
 		arb.scaling = _accel_range_scale;
 
 		arb.x = val_filt(0);
@@ -567,7 +635,7 @@ ADIS16497::publish_accel(const hrt_abstime &t, const ADISReport &report)
 
 		/* Temperature report: */
 		// temperature 1 LSB = 0.1°C
-		arb.temperature = report.TEMP_OUT * 0.1;
+		arb.temperature = report.TEMP_OUT * 0.1f - 25.0f;
 
 		orb_publish(ORB_ID(sensor_accel), _accel_topic, &arb);
 	}
@@ -577,9 +645,9 @@ void
 ADIS16497::publish_gyro(const hrt_abstime &t, const ADISReport &report)
 {
 	// ADIS16497-2BMLZ scale factory
-	float xraw_f = report.gyro_x;
-	float yraw_f = report.gyro_y;
-	float zraw_f = report.gyro_z;
+	float xraw_f = (int32_t(report.X_GYRO_OUT) << 16 | report.X_GYRO_LOW) / 65536.0f;
+	float yraw_f = (int32_t(report.Y_GYRO_OUT) << 16 | report.Y_GYRO_LOW) / 65536.0f;
+	float zraw_f = (int32_t(report.Z_GYRO_OUT) << 16 | report.Z_GYRO_LOW) / 65536.0f;
 
 	// apply user specified rotation
 	rotate_3f(_rotation, xraw_f, yraw_f, zraw_f);
@@ -603,9 +671,9 @@ ADIS16497::publish_gyro(const hrt_abstime &t, const ADISReport &report)
 
 		/* Gyro report: */
 		grb.scaling = math::radians(_gyro_range_scale);
-		grb.x_raw = report.gyro_x;
-		grb.y_raw = report.gyro_y;
-		grb.z_raw = report.gyro_z;
+		grb.x_raw = report.X_GYRO_OUT;
+		grb.y_raw = report.Y_GYRO_OUT;
+		grb.z_raw = report.Z_GYRO_OUT;
 
 		grb.x = gval_filt(0);
 		grb.y = gval_filt(1);
@@ -617,7 +685,7 @@ ADIS16497::publish_gyro(const hrt_abstime &t, const ADISReport &report)
 
 		/* Temperature report: */
 		// temperature 1 LSB = 0.1°C
-		grb.temperature = report.TEMP_OUT * 0.1f;
+		grb.temperature = report.TEMP_OUT * 0.1f - 25.0f;
 
 		orb_publish(ORB_ID(sensor_gyro), _gyro->_gyro_topic, &grb);
 	}
