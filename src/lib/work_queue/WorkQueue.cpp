@@ -43,9 +43,6 @@
 namespace px4
 {
 
-List<WorkQueue *> px4_work_queues_list;
-pthread_mutex_t px4_work_queues_list_mutex = PTHREAD_MUTEX_INITIALIZER;
-
 WorkQueue::WorkQueue(const char *name) :
 	_name(name)
 {
@@ -55,95 +52,21 @@ WorkQueue::WorkQueue(const char *name) :
 
 	px4_sem_init(&_process_lock, 0, 0);
 	px4_sem_setprotocol(&_process_lock, SEM_PRIO_NONE);
+
+	_perf_latency = perf_alloc(PC_ELAPSED, "wq_run_latency");
 }
 
 WorkQueue::~WorkQueue()
 {
+	work_lock();
+	px4_sem_destroy(&_process_lock);
+	work_unlock();
+
 #ifndef __PX4_NUTTX
 	px4_sem_destroy(&_qlock);
 #endif /* __PX4_NUTTX */
 
-	px4_sem_destroy(&_process_lock);
-}
-
-static WorkQueue *
-find_work_queue(const char *name)
-{
-	// search list
-	for (WorkQueue *wq = px4_work_queues_list.getHead(); wq != nullptr; wq = wq->getSibling()) {
-		if (strcmp(wq->name(), name) == 0) {
-			return wq;
-		}
-	}
-
-	return nullptr;
-}
-
-static int work_queue_thread(int argc, char *argv[]);
-
-WorkQueue *work_queue_create(const char *name, uint8_t priority, int stacksize)
-{
-	// find existing work queue or create new
-	PX4_DEBUG("work_queue_create: %s %d %d", name, priority, stacksize);
-
-	// search list for existing work queue
-	WorkQueue *wq = find_work_queue(name);
-
-	if (wq == nullptr) {
-
-		int pid = px4_task_spawn_cmd(name,
-					     SCHED_DEFAULT,
-					     priority,
-					     stacksize,
-					     &work_queue_thread,
-					     (char *const *)nullptr);
-
-		// wait for task to start
-		int i = 0;
-		wq = nullptr;
-
-		do {
-			wq = find_work_queue(name);
-
-			// Wait up to 1s
-			px4_usleep(2500);
-		} while (!wq && ++i < 400);
-
-		if (i == 400) {
-			PX4_ERR("Timed out while waiting for task to start");
-		}
-
-		if (wq != nullptr) {
-			// work queue found, set PID
-			wq->set_task_id(pid);
-		}
-	}
-
-	return wq;
-}
-
-int work_queue_thread(int argc, char *argv[])
-{
-	PX4_DEBUG("work_queue_thread: %s", px4_get_taskname());
-
-	// create work queue and add to list
-	WorkQueue wq(px4_get_taskname());
-
-	// add to work queue list
-	pthread_mutex_lock(&px4_work_queues_list_mutex);
-	px4_work_queues_list.add(&wq);
-	pthread_mutex_unlock(&px4_work_queues_list_mutex);
-
-	// Loop forever processing
-	for (;;) {
-		// TODO: shutdown mechanism
-		wq.process();
-	}
-
-	// remove from work queue list
-	pthread_mutex_lock(&px4_work_queues_list_mutex);
-	px4_work_queues_list.remove(&wq);
-	pthread_mutex_unlock(&px4_work_queues_list_mutex);
+	perf_free(_perf_latency);
 }
 
 void WorkQueue::add(WorkItem *item)
@@ -167,16 +90,22 @@ void WorkQueue::process()
 
 		WorkItem *work = _q.pop();
 
-		work_unlock(); // unlock to run
+		work->pre_run(); // perf monitor start
 
-		work->pre_run();
+		work_unlock(); // unlock work queue to run (item may requeue itself)
+		perf_set_elapsed(_perf_latency, hrt_elapsed_time(&work->qtime()));
 		work->Run();
-		work->post_run();
+		work_lock(); // re-lock
 
-		work_lock();
+		work->post_run(); // perf monitor stop
 	}
 
 	work_unlock();
+}
+
+void WorkQueue::print_status() const
+{
+	perf_print_counter(_perf_latency);
 }
 
 } // namespace px4

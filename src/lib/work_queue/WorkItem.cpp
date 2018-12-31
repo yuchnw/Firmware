@@ -34,6 +34,7 @@
 #include "WorkItem.hpp"
 
 #include "WorkQueue.hpp"
+#include "WorkQueueManager.hpp"
 
 #include <px4_log.h>
 #include <drivers/drv_hrt.h>
@@ -43,9 +44,11 @@ namespace px4
 
 WorkItem::WorkItem()
 {
+#if WQ_ITEM_PERF
 	_perf_cycle_time = perf_alloc(PC_ELAPSED, "wq_cycle_run_time");
 	_perf_latency = perf_alloc(PC_ELAPSED, "wq_run_latency");
 	_perf_interval = perf_alloc(PC_INTERVAL, "wq_run_interval");
+#endif /* WQ_ITEM_PERF */
 
 	if (!Init()) {
 		PX4_DEBUG("init fail");
@@ -54,9 +57,11 @@ WorkItem::WorkItem()
 
 WorkItem::~WorkItem()
 {
+#if WQ_ITEM_PERF
 	perf_free(_perf_cycle_time);
 	perf_free(_perf_latency);
 	perf_free(_perf_interval);
+#endif /* WQ_ITEM_PERF */
 }
 
 bool WorkItem::Init()
@@ -74,15 +79,40 @@ bool WorkItem::Init()
 
 void WorkItem::ScheduleNow()
 {
-	_qtime = hrt_absolute_time();
-	_wq->add(this);
+	if (!_queued) {
+		_queued = true;
+		_qtime = hrt_absolute_time();
+		_wq->add(this);
+
+	} else {
+		PX4_ERR("already queued");
+	}
 };
+
+void WorkItem::pre_run()
+{
+	_queued = false;
+#if WQ_ITEM_PERF
+	perf_set_elapsed(_perf_latency, hrt_elapsed_time(&_qtime));
+	perf_count(_perf_interval);
+	perf_begin(_perf_cycle_time);
+#endif /* WQ_ITEM_PERF */
+}
+
+void WorkItem::post_run()
+{
+#if WQ_ITEM_PERF
+	perf_end(_perf_cycle_time);
+#endif /* WQ_ITEM_PERF */
+}
 
 void WorkItem::print_status() const
 {
+#if WQ_ITEM_PERF
 	perf_print_counter(_perf_cycle_time);
 	perf_print_counter(_perf_interval);
 	perf_print_counter(_perf_latency);
+#endif /* WQ_ITEM_PERF */
 }
 
 } // namespace px4

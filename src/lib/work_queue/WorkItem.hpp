@@ -39,6 +39,8 @@
 #include <px4_defines.h>
 #include <drivers/drv_hrt.h>
 
+#define WQ_ITEM_PERF 0
+
 namespace px4
 {
 
@@ -58,16 +60,12 @@ public:
 
 	virtual void Run() = 0;
 
-	void pre_run()
-	{
-		perf_begin(_perf_cycle_time);
-		perf_count(_perf_interval);
-		perf_set_elapsed(_perf_latency, hrt_elapsed_time(&_qtime));
-	}
-
-	void post_run() { perf_end(_perf_cycle_time); }
+	void pre_run();
+	void post_run();
 
 	void print_status() const;
+
+	const uint64_t &qtime() { return _qtime; }
 
 protected:
 
@@ -77,9 +75,13 @@ private:
 
 	px4::WorkQueue	*_wq{nullptr};
 
+	volatile bool	_queued{false};	// only allow a single item to be queued at a time
+
+#if WQ_ITEM_PERF
 	perf_counter_t	_perf_cycle_time;
 	perf_counter_t	_perf_interval;
 	perf_counter_t	_perf_latency;
+#endif /* WQ_ITEM_PERF */
 };
 
 } // namespace px4

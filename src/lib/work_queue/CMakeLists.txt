@@ -33,10 +33,14 @@
 
 #add_definitions(-DDEBUG_BUILD)
 
-px4_add_library(px4_work_queue
-	ScheduledWorkItem.cpp
-	WorkItem.cpp
-	WorkQueue.cpp
+px4_add_module(
+	MODULE modules__work_queue
+	MAIN wq_manager
+	SRCS
+		ScheduledWorkItem.cpp
+		WorkItem.cpp
+		WorkQueue.cpp
+		WorkQueueManager.cpp
 )
 
 if(PX4_TESTING)

@@ -33,34 +33,97 @@
 
 #pragma once
 
-#include "WorkQueue.hpp"
-
 #include <containers/List.hpp>
 #include <containers/Queue.hpp>
 
 #include <px4_defines.h>
-#include <px4_sem.h>
+#include <px4_module.h>
 #include <px4_tasks.h>
+
+
+extern "C" __EXPORT int wq_manager_main(int argc, char *argv[]);
 
 namespace px4
 {
 
-class WorkQueueManager
-{
+// work queues
 
-public:
+// SPI1 : PRIORITY MAX : STACK 750
 
-	WorkQueueManager();
-	~WorkQueueManager();
+
+enum PX4_WQS {
+	SPI_1 = 0,
+	SPI_2,
+
+	I2C_1,
+	I2C_2,
+
+	rate_loop,
+};
+
+struct wq_config_t {
+	const char *name;
+	int16_t priority;
+	uint16_t stacksize;
+};
+
+static constexpr wq_config_t wq_configurations[] = {
+
+	[SPI_1] = { "SPI_1", 250, 500 },
+	[SPI_2] = { "SPI_2", 250, 500 },
+
+	[I2C_1] = { "I2C_1", 240, 500 },
+	[I2C_2] = { "I2C_2", 240, 500 },
+
+	[rate_loop] = { "rate_loop", 249, 1000 },
 
 };
 
+class WorkQueue;
 
 // list of all px4 work queues
 extern pthread_mutex_t px4_work_queues_list_mutex;
 extern List<WorkQueue *> px4_work_queues_list;
 
+class WorkQueueManager : public ModuleBase<WorkQueueManager>
+{
+
+public:
+
+	WorkQueueManager() = default;
+	~WorkQueueManager() override = default;
+
+	/** @see ModuleBase */
+	static int task_spawn(int argc, char *argv[]);
+
+	/** @see ModuleBase */
+	static WorkQueueManager *instantiate(int argc, char *argv[]);
+
+	/** @see ModuleBase */
+	static int custom_command(int argc, char *argv[]);
+
+	/** @see ModuleBase */
+	static int print_usage(const char *reason = nullptr);
+
+	/** @see ModuleBase::run() */
+	void run() override;
+
+	static void task_main_trampoline(int argc, char *argv[]);
+
+	int print_status() override;
+
+
+	void add_workqueue(WorkQueue *wq);
+	void remove_workqueue(WorkQueue *wq);
+
+private:
+	void create_work_queue_thread(pthread_t *thread);
+
+	static void *work_queue_runner(void *context);
+
+};
 
 WorkQueue *work_queue_create(const char *name, uint8_t priority, int stacksize);
+
 
 } // namespace px4

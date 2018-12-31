@@ -46,7 +46,7 @@ class ScheduledWorkItem : public WorkItem
 public:
 
 	ScheduledWorkItem() = default;
-	~ScheduledWorkItem() override;
+	virtual ~ScheduledWorkItem() override;
 
 	void ScheduleDelayed(uint32_t delay);
 	void ScheduleOnInterval(uint32_t interval, uint32_t delay = 0);

@@ -40,5 +40,5 @@ px4_add_module(
 		wqueue_start.cpp
 		wqueue_test.cpp
 	DEPENDS
-		px4_work_queue
+		modules__work_queue
 	)
